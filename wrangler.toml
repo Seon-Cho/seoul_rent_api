@@ -1,0 +1,12 @@
+name = "seoul-rent-api"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+# SEOUL_API_KEY는 코드/설정에 넣지 않고 Cloudflare Secret으로만 등록합니다.
+#   npx wrangler secret put SEOUL_API_KEY

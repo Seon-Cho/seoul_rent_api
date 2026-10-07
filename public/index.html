@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>서울 전월세 분석</title>
+  <meta name="description" content="서울 열린데이터광장 API로 자치구·법정동별 2022~2026년 전월세 실거래 가격 변화를 분석합니다.">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <h1><span class="dot"></span>서울 전월세 가격 분석</h1>
+      <p class="sub">서울 열린데이터광장 「부동산 전월세가 정보」 API · 2022–2026년</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel controls" aria-label="지역 선택">
+      <label>자치구
+        <select id="gu"><option value="">자치구 선택</option></select>
+      </label>
+      <label>법정동
+        <select id="dong" disabled><option value="">먼저 자치구를 선택하세요</option></select>
+      </label>
+      <button id="load" class="btn" disabled>데이터 불러오기</button>
+    </section>
+
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+
+    <section id="result" hidden>
+      <div class="filters">
+        <div class="seg" role="radiogroup" aria-label="건물 용도" id="usg">
+          <button data-v="" class="on">전체</button>
+          <button data-v="아파트">아파트</button>
+          <button data-v="연립다세대">연립다세대</button>
+          <button data-v="오피스텔">오피스텔</button>
+          <button data-v="단독다가구">단독다가구</button>
+        </div>
+        <button id="csv" class="btn ghost">CSV 다운로드</button>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="grid2">
+        <figure class="panel chart">
+          <figcaption>
+            <h2>전세 보증금 중위값 (월별)</h2>
+            <div class="seg small" id="metric">
+              <button data-v="deposit" class="on">보증금</button>
+              <button data-v="perm2">㎡당</button>
+            </div>
+          </figcaption>
+          <div class="canvas"><canvas id="c1" aria-label="월별 전세 보증금 중위값 선 그래프"></canvas></div>
+        </figure>
+        <figure class="panel chart">
+          <figcaption><h2>월별 거래 건수</h2></figcaption>
+          <div class="canvas"><canvas id="c2" aria-label="월별 전세·월세 거래 건수 막대 그래프"></canvas></div>
+        </figure>
+      </div>
+
+      <figure class="panel chart">
+        <figcaption><h2>월세 중위값 (월별, 만원)</h2></figcaption>
+        <div class="canvas"><canvas id="c3" aria-label="월별 월세 중위값 선 그래프"></canvas></div>
+      </figure>
+
+      <section class="panel">
+        <h2>연도별 요약 <small>(계약일 기준)</small></h2>
+        <div class="tscroll"><table id="ytable"></table></div>
+      </section>
+
+      <section class="panel">
+        <div class="thead">
+          <h2>최근 거래 내역</h2>
+          <input id="q" type="search" placeholder="건물명 검색">
+        </div>
+        <div class="tscroll"><table id="ttable"></table></div>
+        <p class="muted" id="tnote"></p>
+      </section>
+
+      <section class="panel note">
+        <h2>데이터 안내</h2>
+        <ul id="notes"></ul>
+      </section>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    데이터: 서울 열린데이터광장 · 서울시 부동산 전월세가 정보 (tbLnOpendataRentV). API 키는 서버(Cloudflare Worker)에서만 사용됩니다.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
