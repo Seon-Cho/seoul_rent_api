@@ -7,6 +7,7 @@
   <meta name="description" content="서울 열린데이터광장 API로 자치구·법정동별 2022~2026년 전월세 실거래 가격 변화를 분석합니다.">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -18,14 +19,20 @@
   </header>
 
   <main class="wrap">
-    <section class="panel controls" aria-label="지역 선택">
-      <label>자치구
-        <select id="gu"><option value="">자치구 선택</option></select>
-      </label>
-      <label>법정동
-        <select id="dong" disabled><option value="">먼저 자치구를 선택하세요</option></select>
-      </label>
-      <button id="load" class="btn" disabled>데이터 불러오기</button>
+    <section class="panel picker" aria-label="지역 선택">
+      <div id="map" class="map" aria-label="서울 법정동 지도 — 동을 클릭해 선택"></div>
+      <div class="controls">
+        <h2>지역 선택</h2>
+        <p class="muted hint">지도에서 법정동을 클릭하거나 아래에서 선택하세요.</p>
+        <label>자치구
+          <select id="gu"><option value="">자치구 선택</option></select>
+        </label>
+        <label>법정동
+          <select id="dong" disabled><option value="">먼저 자치구를 선택하세요</option></select>
+        </label>
+        <div id="picked" class="picked">선택된 지역 없음</div>
+        <button id="load" class="btn" disabled>데이터 불러오기</button>
+      </div>
     </section>
 
     <div id="status" class="status" role="status" aria-live="polite"></div>
@@ -38,6 +45,7 @@
           <button data-v="연립다세대">연립다세대</button>
           <button data-v="오피스텔">오피스텔</button>
           <button data-v="단독다가구">단독다가구</button>
+          <button data-v="공공임대">공공임대</button>
         </div>
         <button id="csv" class="btn ghost">CSV 다운로드</button>
       </div>
@@ -88,10 +96,11 @@
   </main>
 
   <footer class="wrap foot">
-    데이터: 서울 열린데이터광장 · 서울시 부동산 전월세가 정보 (tbLnOpendataRentV). API 키는 서버(Cloudflare Worker)에서만 사용됩니다.
+    데이터: 서울 열린데이터광장 · 서울시 부동산 전월세가 정보 (tbLnOpendataRentV). 경계: 브이월드(V-World) 법정동. API 키는 서버(Cloudflare Pages Functions)에서만 사용됩니다.
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

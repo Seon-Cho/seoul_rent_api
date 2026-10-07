@@ -1,12 +1,6 @@
-name = "seoul-rent-api"
-main = "src/index.js"
+name = "seoul-rent-snusun"
+pages_build_output_dir = "./public"
 compatibility_date = "2026-09-01"
 
-[assets]
-directory = "./public"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
-
-# SEOUL_API_KEY는 코드/설정에 넣지 않고 Cloudflare Secret으로만 등록합니다.
-#   npx wrangler secret put SEOUL_API_KEY
+# SEOUL_API_KEY는 코드/설정에 넣지 않고 Cloudflare Pages Secret으로만 등록합니다.
+#   npx wrangler pages secret put SEOUL_API_KEY --project-name seoul-rent-snusun

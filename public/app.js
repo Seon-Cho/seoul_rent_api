@@ -4,7 +4,7 @@
 
 const YEARS = [2022, 2023, 2024, 2025, 2026];
 const MIN_N = 3; // 월별 중위값을 표시하기 위한 최소 거래 건수
-const ORANGE = "#f26b1d";
+const MINT = "#14b8a6";
 const NEUTRAL = "#a9b1ba";
 const GRID = "#efede8";
 const INK2 = "#57606a";
@@ -46,31 +46,102 @@ async function initDistricts() {
   const gu = $("#gu");
   for (const d of state.districts) gu.add(new Option(d.name, d.code));
   gu.addEventListener("change", () => {
-    const dong = $("#dong");
-    dong.innerHTML = "";
-    const d = state.districts.find((x) => x.code === gu.value);
-    if (!d) {
-      dong.add(new Option("먼저 자치구를 선택하세요", ""));
-      dong.disabled = true; $("#load").disabled = true; return;
-    }
-    dong.add(new Option("법정동 선택", ""));
-    for (const x of d.dongs) dong.add(new Option(x.name, x.code));
-    dong.disabled = false; $("#load").disabled = true;
+    fillDongs(gu.value);
+    map.focusGu(gu.value);
+    updatePicked();
   });
-  $("#dong").addEventListener("change", (e) => { $("#load").disabled = !e.target.value; });
+  $("#dong").addEventListener("change", () => {
+    map.highlight(gu.value, $("#dong").value);
+    updatePicked();
+  });
   $("#load").addEventListener("click", load);
+
+  await map.init();
 
   // ?gu=11680&dong=10300 형태의 링크로 바로 열기
   const p = new URLSearchParams(location.search);
-  if (/^\d{5}$/.test(p.get("gu") || "")) {
-    gu.value = p.get("gu"); gu.dispatchEvent(new Event("change"));
-    const dong = $("#dong");
-    if (/^\d{5}$/.test(p.get("dong") || "")) {
-      dong.value = p.get("dong");
-      if (dong.value) { $("#load").disabled = false; load(); }
-    }
-  }
+  if (/^\d{5}$/.test(p.get("gu") || "") && /^\d{5}$/.test(p.get("dong") || "")) select(p.get("gu"), p.get("dong"), true);
 }
+
+function fillDongs(guCode) {
+  const dong = $("#dong");
+  dong.innerHTML = "";
+  const d = state.districts.find((x) => x.code === guCode);
+  if (!d) { dong.add(new Option("먼저 자치구를 선택하세요", "")); dong.disabled = true; return; }
+  dong.add(new Option("법정동 선택", ""));
+  for (const x of d.dongs) dong.add(new Option(x.name, x.code));
+  dong.disabled = false;
+}
+
+function updatePicked() {
+  const g = state.districts.find((x) => x.code === $("#gu").value);
+  const d = g?.dongs.find((x) => x.code === $("#dong").value);
+  $("#picked").innerHTML = d ? `선택: <b>${esc(g.name)} ${esc(d.name)}</b>` : g ? `${esc(g.name)} · 법정동을 선택하세요` : "선택된 지역 없음";
+  $("#load").disabled = !d;
+}
+
+// 지도·드롭다운 어느 쪽에서 골라도 같은 상태가 되도록 동기화
+function select(guCode, dongCode, autoload) {
+  $("#gu").value = guCode;
+  fillDongs(guCode);
+  $("#dong").value = dongCode;
+  map.highlight(guCode, $("#dong").value);
+  updatePicked();
+  if (autoload && $("#dong").value) load();
+}
+
+// ---------- 지도 (Leaflet + 브이월드 법정동 경계) ----------
+const map = {
+  m: null, layers: {}, selected: null,
+  base: { color: "#ffffff", weight: 1, fillColor: "#dfe6e4", fillOpacity: 1 },
+  hover: { color: "#0f8f82", weight: 2, fillColor: "#a7e6dd", fillOpacity: 1 },
+  pick: { color: "#0b6f65", weight: 2.5, fillColor: "#14b8a6", fillOpacity: 1 },
+  async init() {
+    if (!window.L) return;
+    this.m = L.map("map", { zoomSnap: 0.25, minZoom: 10, maxZoom: 16, scrollWheelZoom: false, attributionControl: true }).setView([37.5665, 126.978], 10.75);
+    this.m.attributionControl.setPrefix(false).addAttribution("경계: 브이월드 법정동");
+    this.m.on("focus", () => this.m.scrollWheelZoom.enable());
+    this.m.on("blur", () => this.m.scrollWheelZoom.disable());
+
+    const [dong, gu] = await Promise.all([fetch("dong.geojson").then((r) => r.json()), fetch("gu.geojson").then((r) => r.json())]);
+    this.dongLayer = L.geoJSON(dong, {
+      style: () => this.base,
+      onEachFeature: (f, layer) => {
+        const p = f.properties;
+        this.layers[p.g + p.d] = layer;
+        layer.bindTooltip(`${p.gn} <b>${p.n}</b>`, { sticky: true, className: "dong-tip", direction: "top", offset: [0, -6] });
+        layer.on({
+          mouseover: () => { if (this.selected !== layer) layer.setStyle(this.hover); },
+          mouseout: () => { if (this.selected !== layer) layer.setStyle(this.base); },
+          click: () => select(p.g, p.d, true),
+        });
+      },
+    }).addTo(this.m);
+    this.guLayer = L.geoJSON(gu, { style: { color: "#7d8a88", weight: 1.6, fill: false }, interactive: false }).addTo(this.m);
+    this.guBounds = {};
+    this.guLayer.eachLayer((l) => {
+      const p = l.feature.properties;
+      this.guBounds[p.g] = l.getBounds();
+      L.tooltip({ permanent: true, direction: "center", className: "gu-label", interactive: false })
+        .setLatLng(l.getBounds().getCenter()).setContent(p.gn).addTo(this.m);
+    });
+    this.m.fitBounds(this.guLayer.getBounds(), { padding: [8, 8] });
+  },
+  highlight(guCode, dongCode) {
+    if (!this.m) return;
+    if (this.selected) this.selected.setStyle(this.base);
+    this.selected = this.layers[guCode + dongCode] || null;
+    if (this.selected) {
+      this.selected.setStyle(this.pick).bringToFront();
+      this.guLayer.bringToFront();
+      const b = this.selected.getBounds();
+      if (!this.m.getBounds().contains(b) || this.m.getZoom() < 12) this.m.flyToBounds(this.guBounds[guCode] || b, { padding: [20, 20], duration: 0.5 });
+    }
+  },
+  focusGu(guCode) {
+    if (this.m && this.guBounds?.[guCode]) this.m.flyToBounds(this.guBounds[guCode], { padding: [20, 20], duration: 0.5 });
+  },
+};
 
 // ---------- 데이터 로드 (2022~2026 전 연도) ----------
 async function load() {
@@ -225,7 +296,7 @@ function renderCharts(mon) {
   };
   upsert("c1", {
     type: "line",
-    data: { labels, datasets: [{ data: mon.map((m) => (isPerm ? m.perm2 : m.dep)), borderColor: ORANGE, backgroundColor: ORANGE, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2, spanGaps: true, tension: 0.25 }] },
+    data: { labels, datasets: [{ data: mon.map((m) => (isPerm ? m.perm2 : m.dep)), borderColor: MINT, backgroundColor: MINT, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2, spanGaps: true, tension: 0.25 }] },
     options: o1,
   });
 
@@ -238,7 +309,7 @@ function renderCharts(mon) {
     data: {
       labels,
       datasets: [
-        { label: "전세", data: mon.map((m) => m.nJ), backgroundColor: ORANGE, borderColor: "#fff", borderWidth: { top: 2 }, borderRadius: 3, borderSkipped: "bottom" },
+        { label: "전세", data: mon.map((m) => m.nJ), backgroundColor: MINT, borderColor: "#fff", borderWidth: { top: 2 }, borderRadius: 3, borderSkipped: "bottom" },
         { label: "월세", data: mon.map((m) => m.nW), backgroundColor: NEUTRAL, borderColor: "#fff", borderWidth: { top: 2 }, borderRadius: 3, borderSkipped: "bottom" },
       ],
     },
@@ -252,7 +323,7 @@ function renderCharts(mon) {
   };
   upsert("c3", {
     type: "line",
-    data: { labels, datasets: [{ data: mon.map((m) => m.rent), borderColor: ORANGE, backgroundColor: ORANGE, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2, spanGaps: true, tension: 0.25 }] },
+    data: { labels, datasets: [{ data: mon.map((m) => m.rent), borderColor: MINT, backgroundColor: MINT, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2, spanGaps: true, tension: 0.25 }] },
     options: o3,
   });
 }
@@ -286,7 +357,7 @@ function renderTx() {
   const shown = rows.slice(0, 200);
   $("#ttable").innerHTML = `<thead><tr><th>계약일</th><th>구분</th><th>건물명</th><th>용도</th><th>면적(㎡)</th><th>층</th><th>보증금</th><th>월세</th><th>신규/갱신</th></tr></thead><tbody>${
     shown.map((r) => `<tr><td>${fmtDay(r.day)}</td><td class="t"><span class="tag ${r.type === "월세" ? "m" : ""}">${esc(r.type)}</span></td>
-      <td class="t">${esc(r.bldg || "-")}</td><td class="t">${esc(r.usg)}</td><td>${r.area ?? "-"}</td><td>${r.flr ?? "-"}</td>
+      <td class="t">${esc(r.bldg || "-")}</td><td class="t">${r.usg === "공공임대" ? '<span class="tag p">공공임대</span>' : esc(r.usg)}</td><td>${r.area ?? "-"}</td><td>${r.flr ?? "-"}</td>
       <td>${won(r.dep)}</td><td>${r.rent ? r.rent.toLocaleString() + "만" : "-"}</td><td class="t">${esc(r.renew || "-")}</td></tr>`).join("")
   }</tbody>`;
   $("#tnote").textContent = `${rows.length.toLocaleString()}건 중 최근 ${shown.length.toLocaleString()}건 표시 · 전체는 CSV로 내려받을 수 있습니다.`;
@@ -298,7 +369,8 @@ function renderNotes(rows) {
   const first = rows.length ? rows.reduce((a, r) => (r.day < a ? r.day : a), "99999999") : null;
   const notes = [
     `2022–2026년 모든 접수연도를 API로 요청했습니다. ${empty.length ? `서울시 API는 현재 ${empty.join("·")}년 접수분을 제공하지 않아(응답: “해당하는 데이터가 없습니다”) ` : ""}실제 계약일 기준 데이터는 ${first ? fmtDay(first) : "-"}부터입니다. 2023년 계약은 2024년에 신고된 일부만 포함되어 건수가 적습니다.`,
-    "서울시 전월세 데이터는 법정동 단위로 제공되어 법정동 기준으로 선택합니다.",
+    "서울시 전월세 데이터는 법정동 단위로 제공되어 법정동 기준으로 선택합니다. 지도 경계는 브이월드 법정동 경계입니다.",
+    "행복주택·국민임대·영구임대·장기전세·LH/SH 단지·역세권청년주택 등 공공(지원)임대 주택은 ‘아파트’ 등에서 빼고 ‘공공임대’로 따로 분류했습니다. 데이터에 공공임대 여부 항목이 없어 건물명(예: 행복주택, (임대), LH, 엘에이치, SH, 휴먼시아, 청년주택)으로 판별하므로 일부 누락·오분류가 있을 수 있습니다.",
     `가격은 중위값(median)입니다. 해당 월 거래가 ${MIN_N}건 미만이면 그래프에서 생략합니다. 금액 단위는 만원입니다.`,
     "‘최근 12개월’은 데이터의 마지막 계약월로 끝나는 12개월이며, 직전 12개월과 비교합니다.",
   ];
