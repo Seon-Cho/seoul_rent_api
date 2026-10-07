@@ -4,6 +4,9 @@
 
 const YEARS = [2022, 2023, 2024, 2025, 2026];
 const MIN_N = 3; // 월별 중위값을 표시하기 위한 최소 거래 건수
+const RATE = 0.05; // 전월세 전환율 5% — 전세환산 보증금 = 보증금 + 월세×12÷전환율
+const SLATE = "#64748b";
+const conv = (dep, rent) => dep + ((rent || 0) * 12) / RATE;
 const MINT = "#14b8a6";
 const NEUTRAL = "#a9b1ba";
 const GRID = "#efede8";
@@ -153,7 +156,7 @@ async function load() {
   history.replaceState(null, "", `?gu=${guCode}&dong=${dongCode}`);
   $("#load").disabled = true;
   let done = 0;
-  const progress = () => setStatus(`<b>${esc(gu.name)} ${esc(dong.name)}</b> 2022–2026년 데이터를 불러오는 중… (${done}/${YEARS.length})<div class="bar"><i style="width:${(done / YEARS.length) * 100}%"></i></div>`);
+  const progress = () => { setStatus(`<b>${esc(gu.name)} ${esc(dong.name)}</b> 2022–2026년 데이터를 불러오는 중… (${done}/${YEARS.length})<div class="bar"><i></i></div>`); $("#status .bar i").style.width = `${(done / YEARS.length) * 100}%`; };
   progress();
   try {
     const results = await Promise.all(YEARS.map(async (y) => {
@@ -175,6 +178,7 @@ async function load() {
       }
     }
     state.rows = rows.filter((r) => r.day && r.day.length === 8 && r.dep != null);
+    for (const r of state.rows) r.conv = conv(r.dep, r.rent);
     state.meta = results.map((r) => ({ year: r.year, total: r.total, truncated: r.truncated }));
     if (!state.rows.length) {
       setStatus(`${esc(gu.name)} ${esc(dong.name)}에는 조회된 거래가 없습니다.`);
@@ -215,6 +219,9 @@ function monthly(rows) {
       dep: j.length >= MIN_N ? median(j.map((r) => r.dep)) : null,
       perm2: j.length >= MIN_N ? median(j.filter((r) => r.area > 0).map((r) => r.dep / r.area)) : null,
       rent: w.length >= MIN_N ? median(w.map((r) => r.rent)) : null,
+      conv: g.length >= MIN_N ? median(g.map((r) => r.conv)) : null,
+      convW: w.length >= MIN_N ? median(w.map((r) => r.conv)) : null,
+      n: g.length,
     });
     if (++m > 12) { m = 1; y++; }
   }
@@ -316,6 +323,19 @@ function renderCharts(mon) {
     options: o2,
   });
 
+  const o4 = baseOpts((v) => won(v));
+  o4.plugins.legend = { display: true, position: "top", align: "end", labels: { color: INK2, usePointStyle: true, pointStyle: "line", boxWidth: 18 } };
+  o4.plugins.tooltip.callbacks = {
+    label: (c) => ` ${c.dataset.label} ${won(c.parsed.y)}`,
+    afterBody: (items) => { const m = mon[items[0].dataIndex]; return [`전체 ${m.n}건 · 월세 ${m.nW}건`]; },
+  };
+  const line = (label, data, color, extra = {}) => ({ label, data, borderColor: color, backgroundColor: color, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderColor: "#fff", pointHoverBorderWidth: 2, spanGaps: true, tension: 0.25, ...extra });
+  upsert("c4", {
+    type: "line",
+    data: { labels, datasets: [line("전체 거래 (환산)", mon.map((m) => m.conv), MINT), line("월세 거래만 (환산)", mon.map((m) => m.convW), SLATE, { borderDash: [5, 4] })] },
+    options: o4,
+  });
+
   const o3 = baseOpts((v) => `${v.toLocaleString()}만`);
   o3.plugins.tooltip.callbacks = {
     label: (c) => ` 월세 중위 ${c.parsed.y.toLocaleString()}만원`,
@@ -339,14 +359,15 @@ function renderYearTable(rows) {
     const j = g.filter((r) => r.type === "전세"), w = g.filter((r) => r.type === "월세");
     const dep = median(j.map((r) => r.dep));
     const ch = partial ? null : pct(dep, prevDep); prevDep = partial ? null : dep;
+    const cv = median(g.map((r) => r.conv));
     const renew = g.length ? (g.filter((r) => r.renew === "갱신").length / g.length) * 100 : 0;
     return `<tr><td>${y}년${partial ? ' <span class="tag m">부분</span>' : ""}</td><td>${g.length.toLocaleString()}</td><td>${j.length.toLocaleString()}</td><td>${won(dep)}</td>
       <td class="d">${ch == null ? "–" : `${ch >= 0 ? "+" : ""}${ch.toFixed(1)}%`}</td>
       <td>${won(median(j.filter((r) => r.area > 0).map((r) => r.dep / r.area)))}</td>
-      <td>${w.length.toLocaleString()}</td><td>${won(median(w.map((r) => r.dep)))}</td><td>${(median(w.map((r) => r.rent)) ?? "–").toLocaleString()}만</td>
+      <td>${w.length.toLocaleString()}</td><td>${won(median(w.map((r) => r.dep)))}</td><td>${(median(w.map((r) => r.rent)) ?? "–").toLocaleString()}만</td><td>${won(cv)}</td>
       <td>${renew.toFixed(0)}%</td></tr>`;
   }).join("");
-  $("#ytable").innerHTML = `<thead><tr><th>계약연도</th><th>전체 건수</th><th>전세 건수</th><th>전세 중위 보증금</th><th>전년 대비</th><th>전세 ㎡당</th><th>월세 건수</th><th>월세 중위 보증금</th><th>월세 중위</th><th>갱신 비율</th></tr></thead><tbody>${body}</tbody>`;
+  $("#ytable").innerHTML = `<thead><tr><th>계약연도</th><th>전체 건수</th><th>전세 건수</th><th>전세 중위 보증금</th><th>전년 대비</th><th>전세 ㎡당</th><th>월세 건수</th><th>월세 중위 보증금</th><th>월세 중위</th><th>전세환산 중위</th><th>갱신 비율</th></tr></thead><tbody>${body}</tbody>`;
 }
 
 function renderTx() {
@@ -372,6 +393,7 @@ function renderNotes(rows) {
     "서울시 전월세 데이터는 법정동 단위로 제공되어 법정동 기준으로 선택합니다. 지도 경계는 브이월드 법정동 경계입니다.",
     "행복주택·국민임대·영구임대·장기전세·LH/SH 단지·역세권청년주택 등 공공(지원)임대 주택은 ‘아파트’ 등에서 빼고 ‘공공임대’로 따로 분류했습니다. 데이터에 공공임대 여부 항목이 없어 건물명(예: 행복주택, (임대), LH, 엘에이치, SH, 휴먼시아, 청년주택)으로 판별하므로 일부 누락·오분류가 있을 수 있습니다.",
     `가격은 중위값(median)입니다. 해당 월 거래가 ${MIN_N}건 미만이면 그래프에서 생략합니다. 금액 단위는 만원입니다.`,
+    "전세환산 보증금 = 보증금 + 월세 × 12 ÷ 전환율(5%). 전세 거래는 보증금 그대로이고, 월세 거래는 월세를 보증금으로 환산해 더합니다.",
     "‘최근 12개월’은 데이터의 마지막 계약월로 끝나는 12개월이며, 직전 12개월과 비교합니다.",
   ];
   if (trunc.length) notes.push(`${trunc.join("·")}년은 거래가 매우 많아 일부만 불러왔습니다.`);
@@ -379,11 +401,11 @@ function renderNotes(rows) {
 }
 
 function downloadCsv() {
-  const head = ["계약일", "구분", "건물명", "용도", "면적_㎡", "층", "보증금_만원", "월세_만원", "건축년도", "신규갱신", "접수연도"];
+  const head = ["계약일", "구분", "건물명", "용도", "면적_㎡", "층", "보증금_만원", "월세_만원", "전세환산보증금_만원", "건축년도", "신규갱신", "접수연도"];
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [head.join(",")].concat(
     filtered().slice().sort((a, b) => a.day.localeCompare(b.day))
-      .map((r) => [r.day, r.type, r.bldg, r.usg, r.area, r.flr, r.dep, r.rent, r.built, r.renew, r.rcpt].map(q).join(","))
+      .map((r) => [r.day, r.type, r.bldg, r.usg, r.area, r.flr, r.dep, r.rent, Math.round(r.conv), r.built, r.renew, r.rcpt].map(q).join(","))
   );
   const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
@@ -392,6 +414,43 @@ function downloadCsv() {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
+
+// ---------- 첫 화면: 자치구 전세환산 보증금 TOP 10 ----------
+const top10 = { data: null, type: "아파트", metric: "median" };
+async function initTop10() {
+  try {
+    top10.data = await (await fetch("top10.json")).json();
+  } catch { $("#top10").hidden = true; return; }
+  const d = top10.data;
+  $("#t10period").textContent = `${d.period[0].replace("-", ".")}–${d.period[1].replace("-", ".")} 계약 · 전환율 ${d.rate * 100}%`;
+  $("#t10note").textContent = `서울 전체 ${d.rows.toLocaleString()}건(최근 12개월 계약)의 자치구·유형별 중위값입니다. 거래 ${d.min_n}건 미만인 자치구는 제외했습니다. 자치구를 누르면 지도에서 보여 줍니다. (집계일 ${d.generated})`;
+  renderTop10();
+}
+function renderTop10() {
+  const items = (top10.data.types[top10.type] || []).filter((x) => x[top10.metric] != null)
+    .sort((a, b) => b[top10.metric] - a[top10.metric]).slice(0, 10);
+  const max = items[0]?.[top10.metric] || 1;
+  $("#t10list").innerHTML = items.length ? items.map((x, i) => {
+    const g = state.districts.find((d) => d.name === x.gu);
+    return `<li tabindex="0" data-gu="${g ? g.code : ""}" title="${esc(x.gu)} — 지도에서 보기">
+      <span class="no">${i + 1}</span><span class="gu">${esc(x.gu)}</span>
+      <span class="track"><span class="fill" data-w="${((x[top10.metric] / max) * 100).toFixed(1)}"></span></span>
+      <span class="val">${won(x[top10.metric])}${top10.metric === "perm2" ? "/㎡" : ""}<small>${x.n.toLocaleString()}건</small></span></li>`;
+  }).join("") : `<li class="muted">해당 유형의 데이터가 부족합니다.</li>`;
+  // CSP(style-src 'self')로 인라인 style 속성이 막히므로 CSSOM으로 너비 지정
+  $("#t10list").querySelectorAll(".fill").forEach((el) => { el.style.width = el.dataset.w + "%"; });
+}
+function pickGuFromRank(e) {
+  const li = e.target.closest("li[data-gu]");
+  if (!li || !li.dataset.gu) return;
+  if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
+  e.preventDefault();
+  $("#gu").value = li.dataset.gu;
+  $("#gu").dispatchEvent(new Event("change"));
+  $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+$("#t10list").addEventListener("click", pickGuFromRank);
+$("#t10list").addEventListener("keydown", pickGuFromRank);
 
 // ---------- 이벤트 ----------
 function segment(id, key, after) {
@@ -403,9 +462,11 @@ function segment(id, key, after) {
   });
 }
 segment("#usg", "usg", render);
+segment("#t10type", "_t10type", () => { top10.type = state._t10type; renderTop10(); });
+segment("#t10metric", "_t10metric", () => { top10.metric = state._t10metric; renderTop10(); });
 segment("#metric", "metric", () => renderCharts(monthly(filtered())));
 $("#q").addEventListener("input", renderTx);
 $("#csv").addEventListener("click", downloadCsv);
 
 if (window.Chart) Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-initDistricts().catch(() => setStatus("지역 목록을 불러오지 못했습니다.", true));
+initDistricts().then(initTop10).catch(() => setStatus("지역 목록을 불러오지 못했습니다.", true));

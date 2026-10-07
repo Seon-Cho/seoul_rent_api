@@ -102,6 +102,17 @@ tr:hover td { background: var(--accent-soft); }
 .thead h2 { margin: 0; }
 .muted { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
 .note ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 14px; }
+#top10 .seg { margin: 10px 0 14px; }
+.rank { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rank li { display: grid; grid-template-columns: 26px 72px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.rank li:hover, .rank li:focus-visible { background: var(--accent-soft); outline: none; }
+.rank .no { font-weight: 700; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.rank li:nth-child(-n+3) .no { color: var(--accent-strong); }
+.rank .gu { font-weight: 600; white-space: nowrap; }
+.rank .track { height: 14px; background: #f1f3f2; border-radius: 4px; overflow: hidden; }
+.rank .fill { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+.rank .val { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; text-align: right; min-width: 96px; }
+.rank .val small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
 .foot { color: var(--muted); font-size: 12px; padding-top: 8px; padding-bottom: 32px; }
 
 @media (max-width: 860px) {
@@ -111,6 +122,8 @@ tr:hover td { background: var(--accent-soft); }
   .kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
 @media (max-width: 480px) {
+  .rank li { grid-template-columns: 22px 60px minmax(0, 1fr) auto; gap: 8px; }
+  .rank .val { min-width: 80px; font-size: 14px; }
   .panel { padding: 14px; }
   .kpi { padding: 12px; }
   .kpi .l { font-size: 12px; }

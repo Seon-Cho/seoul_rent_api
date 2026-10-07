@@ -35,6 +35,25 @@
       </div>
     </section>
 
+    <section class="panel" id="top10" aria-label="자치구 전세환산 보증금 TOP 10">
+      <div class="thead">
+        <h2>자치구 전세환산 보증금 TOP 10 <small id="t10period"></small></h2>
+        <div class="seg small" id="t10metric">
+          <button data-v="median" class="on">총액</button>
+          <button data-v="perm2">㎡당</button>
+        </div>
+      </div>
+      <div class="seg" role="radiogroup" aria-label="건물 유형" id="t10type">
+        <button data-v="아파트" class="on">아파트</button>
+        <button data-v="연립다세대">연립다세대</button>
+        <button data-v="오피스텔">오피스텔</button>
+        <button data-v="단독다가구">단독다가구</button>
+        <button data-v="공공임대">공공임대</button>
+      </div>
+      <ol class="rank" id="t10list"></ol>
+      <p class="muted" id="t10note"></p>
+    </section>
+
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
     <section id="result" hidden>
@@ -68,6 +87,13 @@
           <div class="canvas"><canvas id="c2" aria-label="월별 전세·월세 거래 건수 막대 그래프"></canvas></div>
         </figure>
       </div>
+
+      <figure class="panel chart">
+        <figcaption>
+          <h2>전세환산 보증금 중위값 (월별) <small>보증금 + 월세×12÷5%</small></h2>
+        </figcaption>
+        <div class="canvas"><canvas id="c4" aria-label="월별 전세환산 보증금 중위값 선 그래프"></canvas></div>
+      </figure>
 
       <figure class="panel chart">
         <figcaption><h2>월세 중위값 (월별, 만원)</h2></figcaption>
