@@ -446,14 +446,14 @@ function downloadCsv() {
 }
 
 // ---------- 첫 화면: 자치구 전세환산 보증금 TOP 10 ----------
-const top10 = { data: null, type: "아파트", metric: "median" };
+const top10 = { data: null, type: "전체", metric: "median" };
 async function initTop10() {
   try {
     top10.data = await (await fetch("top10.json")).json();
   } catch { $("#top10").hidden = true; return; }
   const d = top10.data;
   $("#t10period").textContent = `${d.period[0].replace("-", ".")}–${d.period[1].replace("-", ".")} 계약 · 전환율 ${d.rate * 100}%`;
-  $("#t10note").textContent = `서울 전체 ${d.rows.toLocaleString()}건(최근 12개월 계약)의 자치구·유형별 중위값입니다. 거래 ${d.min_n}건 미만인 자치구는 제외했습니다. 자치구를 누르면 해당 자치구 전체를 조회합니다. (집계일 ${d.generated})`;
+  $("#t10note").textContent = `서울 전체 ${d.rows.toLocaleString()}건(최근 12개월 계약)의 자치구·유형별 중위값입니다. ‘전체’는 공공임대를 포함한 모든 유형의 거래입니다. 거래 ${d.min_n}건 미만인 자치구는 제외했습니다. 자치구를 누르면 해당 자치구 전체를 조회합니다. (집계일 ${d.generated})`;
   renderTop10();
 }
 function renderTop10() {

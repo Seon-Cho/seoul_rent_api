@@ -24,7 +24,7 @@ SERVICE = "tbLnOpendataRentV"
 PAGE = 1000
 RATE = 0.05                        # 전월세 전환율 5%
 MIN_N = 30                         # 순위에 넣을 최소 거래 건수
-TYPES = ["아파트", "연립다세대", "오피스텔", "단독다가구", "공공임대"]
+TYPES = ["전체", "아파트", "연립다세대", "오피스텔", "단독다가구", "공공임대"]
 
 # functions/api/rent.js 와 동일한 공공임대 판별 규칙
 PUBLIC_ANY = re.compile(r"행복주택|행복아파트|임대|장기전세|휴먼시아|도시개발공사|청년주택|공공주택")
@@ -105,10 +105,12 @@ def main():
         except ValueError:
             continue
         conv = dep + rent * 12 / RATE
-        g = groups[(r["CGG_NM"], usage(r))]
-        g["v"].append(conv)
-        if area > 0:
-            g["m2"].append(conv / area)
+        # 유형별 + '전체'(모든 유형) 두 그룹에 함께 집계
+        for key in ((r["CGG_NM"], usage(r)), (r["CGG_NM"], "전체")):
+            g = groups[key]
+            g["v"].append(conv)
+            if area > 0:
+                g["m2"].append(conv / area)
 
     result = {}
     for t in TYPES:
@@ -129,7 +131,7 @@ def main():
         "period": [f"{start[:4]}-{start[4:]}", f"{end[:4]}-{end[4:]}"],
         "rate": RATE,
         "min_n": MIN_N,
-        "rows": sum(len(g["v"]) for g in groups.values()),
+        "rows": sum(len(g["v"]) for (gu, t), g in groups.items() if t == "전체"),
         "types": result,
     }
     path = ROOT / "public" / "top10.json"
