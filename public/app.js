@@ -6,6 +6,7 @@ const YEARS = [2022, 2023, 2024, 2025, 2026];
 const MIN_N = 3; // 월별 중위값을 표시하기 위한 최소 거래 건수
 const RATE = 0.05; // 전월세 전환율 5% — 전세환산 보증금 = 보증금 + 월세×12÷전환율
 const SLATE = "#64748b";
+const ALL = "all"; // 법정동 대신 자치구 전체 조회
 const conv = (dep, rent) => dep + ((rent || 0) * 12) / RATE;
 const MINT = "#14b8a6";
 const NEUTRAL = "#a9b1ba";
@@ -50,7 +51,7 @@ async function initDistricts() {
   for (const d of state.districts) gu.add(new Option(d.name, d.code));
   gu.addEventListener("change", () => {
     fillDongs(gu.value);
-    map.focusGu(gu.value);
+    if (gu.value) map.highlight(gu.value, ALL); else map.highlight("", "");
     updatePicked();
   });
   $("#dong").addEventListener("change", () => {
@@ -61,9 +62,9 @@ async function initDistricts() {
 
   await map.init();
 
-  // ?gu=11680&dong=10300 형태의 링크로 바로 열기
+  // ?gu=11680&dong=10300 (법정동) 또는 ?gu=11680 (자치구 전체) 링크로 바로 열기
   const p = new URLSearchParams(location.search);
-  if (/^\d{5}$/.test(p.get("gu") || "") && /^\d{5}$/.test(p.get("dong") || "")) select(p.get("gu"), p.get("dong"), true);
+  if (/^\d{5}$/.test(p.get("gu") || "")) select(p.get("gu"), /^\d{5}$/.test(p.get("dong") || "") ? p.get("dong") : ALL, true);
 }
 
 function fillDongs(guCode) {
@@ -71,7 +72,7 @@ function fillDongs(guCode) {
   dong.innerHTML = "";
   const d = state.districts.find((x) => x.code === guCode);
   if (!d) { dong.add(new Option("먼저 자치구를 선택하세요", "")); dong.disabled = true; return; }
-  dong.add(new Option("법정동 선택", ""));
+  dong.add(new Option("자치구 전체", ALL));
   for (const x of d.dongs) dong.add(new Option(x.name, x.code));
   dong.disabled = false;
 }
@@ -79,8 +80,9 @@ function fillDongs(guCode) {
 function updatePicked() {
   const g = state.districts.find((x) => x.code === $("#gu").value);
   const d = g?.dongs.find((x) => x.code === $("#dong").value);
-  $("#picked").innerHTML = d ? `선택: <b>${esc(g.name)} ${esc(d.name)}</b>` : g ? `${esc(g.name)} · 법정동을 선택하세요` : "선택된 지역 없음";
-  $("#load").disabled = !d;
+  const all = g && $("#dong").value === ALL;
+  $("#picked").innerHTML = d ? `선택: <b>${esc(g.name)} ${esc(d.name)}</b>` : all ? `선택: <b>${esc(g.name)} 전체</b> <span class="muted">(자치구 단위)</span>` : "선택된 지역 없음";
+  $("#load").disabled = !(d || all);
 }
 
 // 지도·드롭다운 어느 쪽에서 골라도 같은 상태가 되도록 동기화
@@ -90,19 +92,23 @@ function select(guCode, dongCode, autoload) {
   $("#dong").value = dongCode;
   map.highlight(guCode, $("#dong").value);
   updatePicked();
-  if (autoload && $("#dong").value) load();
+  if (autoload && !$("#load").disabled) load();
 }
 
 // ---------- 지도 (Leaflet + 브이월드 법정동 경계) ----------
 const map = {
   m: null, layers: {}, selected: null,
-  base: { color: "#ffffff", weight: 1, fillColor: "#dfe6e4", fillOpacity: 1 },
-  hover: { color: "#0f8f82", weight: 2, fillColor: "#a7e6dd", fillOpacity: 1 },
-  pick: { color: "#0b6f65", weight: 2.5, fillColor: "#14b8a6", fillOpacity: 1 },
+  base: { color: "#7f8c8a", weight: 0.6, opacity: 0.7, fillColor: "#14b8a6", fillOpacity: 0.04 },
+  hover: { color: "#0f8f82", weight: 2, opacity: 1, fillColor: "#14b8a6", fillOpacity: 0.25 },
+  pick: { color: "#0b6f65", weight: 2.5, opacity: 1, fillColor: "#14b8a6", fillOpacity: 0.5 },
+  guBase: { color: "#4b5755", weight: 1.8, opacity: 0.8, fill: false },
+  guPick: { color: "#0b6f65", weight: 3, opacity: 1, fill: true, fillColor: "#14b8a6", fillOpacity: 0.28 },
   async init() {
     if (!window.L) return;
     this.m = L.map("map", { zoomSnap: 0.25, minZoom: 10, maxZoom: 16, scrollWheelZoom: false, attributionControl: true }).setView([37.5665, 126.978], 10.75);
-    this.m.attributionControl.setPrefix(false).addAttribution("경계: 브이월드 법정동");
+    this.m.attributionControl.setPrefix(false).addAttribution("배경지도·경계: 브이월드");
+    // 브이월드 배경지도(white). 키 보호를 위해 /api/tile 프록시를 통해 받습니다.
+    L.tileLayer("/api/tile/{z}/{y}/{x}", { opacity: 0.55, minZoom: 9, maxZoom: 18, maxNativeZoom: 18, bounds: [[37.38, 126.7], [37.75, 127.3]] }).addTo(this.m);
     this.m.on("focus", () => this.m.scrollWheelZoom.enable());
     this.m.on("blur", () => this.m.scrollWheelZoom.disable());
 
@@ -120,19 +126,29 @@ const map = {
         });
       },
     }).addTo(this.m);
-    this.guLayer = L.geoJSON(gu, { style: { color: "#7d8a88", weight: 1.6, fill: false }, interactive: false }).addTo(this.m);
-    this.guBounds = {};
+    this.guLayer = L.geoJSON(gu, { style: () => this.guBase, interactive: false }).addTo(this.m);
+    this.guBounds = {}; this.guLayers = {};
     this.guLayer.eachLayer((l) => {
       const p = l.feature.properties;
       this.guBounds[p.g] = l.getBounds();
+      this.guLayers[p.g] = l;
       L.tooltip({ permanent: true, direction: "center", className: "gu-label", interactive: false })
         .setLatLng(l.getBounds().getCenter()).setContent(p.gn).addTo(this.m);
     });
     this.m.fitBounds(this.guLayer.getBounds(), { padding: [8, 8] });
+    this.m.setMaxBounds(this.guLayer.getBounds().pad(0.3));
   },
   highlight(guCode, dongCode) {
     if (!this.m) return;
     if (this.selected) this.selected.setStyle(this.base);
+    if (this.selectedGu) this.selectedGu.setStyle(this.guBase);
+    this.selected = null; this.selectedGu = null;
+    if (dongCode === ALL) {
+      this.selectedGu = this.guLayers[guCode] || null;
+      this.selectedGu?.setStyle(this.guPick);
+      this.focusGu(guCode);
+      return;
+    }
     this.selected = this.layers[guCode + dongCode] || null;
     if (this.selected) {
       this.selected.setStyle(this.pick).bringToFront();
@@ -150,41 +166,57 @@ const map = {
 async function load() {
   const guCode = $("#gu").value, dongCode = $("#dong").value;
   const gu = state.districts.find((x) => x.code === guCode);
-  const dong = gu?.dongs.find((x) => x.code === dongCode);
-  if (!gu || !dong) return;
+  const dong = dongCode === ALL ? null : gu?.dongs.find((x) => x.code === dongCode);
+  if (!gu || (!dong && dongCode !== ALL)) return;
   state.gu = gu; state.dong = dong;
-  history.replaceState(null, "", `?gu=${guCode}&dong=${dongCode}`);
+  const label = `${esc(gu.name)} ${dong ? esc(dong.name) : "전체"}`;
+  history.replaceState(null, "", dong ? `?gu=${guCode}&dong=${dongCode}` : `?gu=${guCode}`);
   $("#load").disabled = true;
-  let done = 0;
-  const progress = () => { setStatus(`<b>${esc(gu.name)} ${esc(dong.name)}</b> 2022–2026년 데이터를 불러오는 중… (${done}/${YEARS.length})<div class="bar"><i></i></div>`); $("#status .bar i").style.width = `${(done / YEARS.length) * 100}%`; };
+
+  // 연도별 첫 조각(chunk 0)을 받은 뒤, 자치구 전체처럼 큰 경우 나머지 조각을 이어서 받습니다.
+  let loaded = 0; const totals = {};
+  const progress = () => {
+    const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+    const pctDone = Object.keys(totals).length < YEARS.length ? Math.min(loaded / Math.max(sum, 1), 0.1) : loaded / Math.max(sum, 1);
+    setStatus(`<b>${label}</b> 2022–2026년 데이터를 불러오는 중… ${sum ? `(${loaded.toLocaleString()} / ${sum.toLocaleString()}건)` : ""}${dong ? "" : "<br><span class=\"muted\">자치구 전체는 거래가 많아 수십 초 걸릴 수 있습니다.</span>"}<div class="bar"><i></i></div>`);
+    $("#status .bar i").style.width = `${Math.round(pctDone * 100)}%`;
+  };
+  const getPart = async (y, chunk) => {
+    const r = await fetch(`/api/rent?gu=${guCode}&dong=${dong ? dongCode : ""}&year=${y}&chunk=${chunk}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    totals[y] = j.total; loaded += j.rows.length; progress();
+    return j;
+  };
+  // 동시에 3개 요청까지만 (서울시 API 부하 완화)
+  const pool = async (tasks, n = 3) => {
+    const out = []; let i = 0;
+    await Promise.all(Array.from({ length: n }, async () => { while (i < tasks.length) { const k = i++; out[k] = await tasks[k](); } }));
+    return out;
+  };
   progress();
   try {
-    const results = await Promise.all(YEARS.map(async (y) => {
-      const r = await fetch(`/api/rent?gu=${guCode}&dong=${dongCode}&year=${y}`);
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      done++; progress();
-      return j;
-    }));
+    const firsts = await pool(YEARS.map((y) => () => getPart(y, 0)));
+    const more = firsts.flatMap((f) => Array.from({ length: f.chunks - 1 }, (_, k) => () => getPart(f.year, k + 1)));
+    const parts = firsts.concat(await pool(more));
     const rows = [];
-    for (const r of results) {
-      const f = r.fields;
-      const idx = Object.fromEntries(f.map((k, i) => [k, i]));
+    for (const r of parts) {
+      const idx = Object.fromEntries(r.fields.map((k, i) => [k, i]));
       for (const a of r.rows) {
         rows.push({
-          day: a[idx.CTRT_DAY], type: a[idx.RENT_SE], area: a[idx.RENT_AREA], dep: a[idx.GRFE], rent: a[idx.RTFE],
+          dong: a[idx.STDG_NM], day: a[idx.CTRT_DAY], type: a[idx.RENT_SE], area: a[idx.RENT_AREA], dep: a[idx.GRFE], rent: a[idx.RTFE],
           bldg: a[idx.BLDG_NM], usg: a[idx.BLDG_USG], flr: a[idx.FLR], built: a[idx.ARCH_YR], renew: a[idx.NEW_UPDT_YN], rcpt: a[idx.RCPT_YR],
         });
       }
     }
     state.rows = rows.filter((r) => r.day && r.day.length === 8 && r.dep != null);
     for (const r of state.rows) r.conv = conv(r.dep, r.rent);
-    state.meta = results.map((r) => ({ year: r.year, total: r.total, truncated: r.truncated }));
+    state.meta = firsts.map((r) => ({ year: r.year, total: r.total }));
     if (!state.rows.length) {
-      setStatus(`${esc(gu.name)} ${esc(dong.name)}에는 조회된 거래가 없습니다.`);
+      setStatus(`${label}에는 조회된 거래가 없습니다.`);
       $("#result").hidden = true;
     } else {
-      setStatus(`<b>${esc(gu.name)} ${esc(dong.name)}</b> · 총 ${state.rows.length.toLocaleString()}건 불러옴 (접수연도 ${state.meta.map((m) => `${m.year}: ${m.total.toLocaleString()}`).join(" · ")})`);
+      setStatus(`<b>${label}</b> · 총 ${state.rows.length.toLocaleString()}건 불러옴 (접수연도 ${state.meta.map((m) => `${m.year}: ${m.total.toLocaleString()}`).join(" · ")})`);
       $("#result").hidden = false;
       render();
     }
@@ -373,12 +405,12 @@ function renderYearTable(rows) {
 function renderTx() {
   const q = $("#q").value.trim();
   let rows = filtered();
-  if (q) rows = rows.filter((r) => r.bldg.includes(q));
+  if (q) rows = rows.filter((r) => r.bldg.includes(q) || (r.dong || "").includes(q));
   rows = rows.slice().sort((a, b) => b.day.localeCompare(a.day));
   const shown = rows.slice(0, 200);
-  $("#ttable").innerHTML = `<thead><tr><th>계약일</th><th>구분</th><th>건물명</th><th>용도</th><th>면적(㎡)</th><th>층</th><th>보증금</th><th>월세</th><th>신규/갱신</th></tr></thead><tbody>${
+  $("#ttable").innerHTML = `<thead><tr><th>계약일</th><th>구분</th><th>법정동</th><th>건물명</th><th>용도</th><th>면적(㎡)</th><th>층</th><th>보증금</th><th>월세</th><th>신규/갱신</th></tr></thead><tbody>${
     shown.map((r) => `<tr><td>${fmtDay(r.day)}</td><td class="t"><span class="tag ${r.type === "월세" ? "m" : ""}">${esc(r.type)}</span></td>
-      <td class="t">${esc(r.bldg || "-")}</td><td class="t">${r.usg === "공공임대" ? '<span class="tag p">공공임대</span>' : esc(r.usg)}</td><td>${r.area ?? "-"}</td><td>${r.flr ?? "-"}</td>
+      <td class="t">${esc(r.dong || "-")}</td><td class="t">${esc(r.bldg || "-")}</td><td class="t">${r.usg === "공공임대" ? '<span class="tag p">공공임대</span>' : esc(r.usg)}</td><td>${r.area ?? "-"}</td><td>${r.flr ?? "-"}</td>
       <td>${won(r.dep)}</td><td>${r.rent ? r.rent.toLocaleString() + "만" : "-"}</td><td class="t">${esc(r.renew || "-")}</td></tr>`).join("")
   }</tbody>`;
   $("#tnote").textContent = `${rows.length.toLocaleString()}건 중 최근 ${shown.length.toLocaleString()}건 표시 · 전체는 CSV로 내려받을 수 있습니다.`;
@@ -386,7 +418,6 @@ function renderTx() {
 
 function renderNotes(rows) {
   const empty = state.meta.filter((m) => m.total === 0).map((m) => m.year);
-  const trunc = state.meta.filter((m) => m.truncated).map((m) => m.year);
   const first = rows.length ? rows.reduce((a, r) => (r.day < a ? r.day : a), "99999999") : null;
   const notes = [
     `2022–2026년 모든 접수연도를 API로 요청했습니다. ${empty.length ? `서울시 API는 현재 ${empty.join("·")}년 접수분을 제공하지 않아(응답: “해당하는 데이터가 없습니다”) ` : ""}실제 계약일 기준 데이터는 ${first ? fmtDay(first) : "-"}부터입니다. 2023년 계약은 2024년에 신고된 일부만 포함되어 건수가 적습니다.`,
@@ -396,21 +427,20 @@ function renderNotes(rows) {
     "전세환산 보증금 = 보증금 + 월세 × 12 ÷ 전환율(5%). 전세 거래는 보증금 그대로이고, 월세 거래는 월세를 보증금으로 환산해 더합니다.",
     "‘최근 12개월’은 데이터의 마지막 계약월로 끝나는 12개월이며, 직전 12개월과 비교합니다.",
   ];
-  if (trunc.length) notes.push(`${trunc.join("·")}년은 거래가 매우 많아 일부만 불러왔습니다.`);
   $("#notes").innerHTML = notes.map((n) => `<li>${n}</li>`).join("");
 }
 
 function downloadCsv() {
-  const head = ["계약일", "구분", "건물명", "용도", "면적_㎡", "층", "보증금_만원", "월세_만원", "전세환산보증금_만원", "건축년도", "신규갱신", "접수연도"];
+  const head = ["법정동", "계약일", "구분", "건물명", "용도", "면적_㎡", "층", "보증금_만원", "월세_만원", "전세환산보증금_만원", "건축년도", "신규갱신", "접수연도"];
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [head.join(",")].concat(
     filtered().slice().sort((a, b) => a.day.localeCompare(b.day))
-      .map((r) => [r.day, r.type, r.bldg, r.usg, r.area, r.flr, r.dep, r.rent, Math.round(r.conv), r.built, r.renew, r.rcpt].map(q).join(","))
+      .map((r) => [r.dong, r.day, r.type, r.bldg, r.usg, r.area, r.flr, r.dep, r.rent, Math.round(r.conv), r.built, r.renew, r.rcpt].map(q).join(","))
   );
   const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `seoul_rent_${state.gu.name}_${state.dong.name}_2022-2026${state.usg ? "_" + state.usg : ""}.csv`;
+  a.download = `seoul_rent_${state.gu.name}_${state.dong ? state.dong.name : "전체"}_2022-2026${state.usg ? "_" + state.usg : ""}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
@@ -423,7 +453,7 @@ async function initTop10() {
   } catch { $("#top10").hidden = true; return; }
   const d = top10.data;
   $("#t10period").textContent = `${d.period[0].replace("-", ".")}–${d.period[1].replace("-", ".")} 계약 · 전환율 ${d.rate * 100}%`;
-  $("#t10note").textContent = `서울 전체 ${d.rows.toLocaleString()}건(최근 12개월 계약)의 자치구·유형별 중위값입니다. 거래 ${d.min_n}건 미만인 자치구는 제외했습니다. 자치구를 누르면 지도에서 보여 줍니다. (집계일 ${d.generated})`;
+  $("#t10note").textContent = `서울 전체 ${d.rows.toLocaleString()}건(최근 12개월 계약)의 자치구·유형별 중위값입니다. 거래 ${d.min_n}건 미만인 자치구는 제외했습니다. 자치구를 누르면 해당 자치구 전체를 조회합니다. (집계일 ${d.generated})`;
   renderTop10();
 }
 function renderTop10() {
@@ -445,8 +475,7 @@ function pickGuFromRank(e) {
   if (!li || !li.dataset.gu) return;
   if (e.type === "keydown" && e.key !== "Enter" && e.key !== " ") return;
   e.preventDefault();
-  $("#gu").value = li.dataset.gu;
-  $("#gu").dispatchEvent(new Event("change"));
+  select(li.dataset.gu, ALL, true);
   $("#map").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 $("#t10list").addEventListener("click", pickGuFromRank);
