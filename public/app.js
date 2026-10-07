@@ -107,8 +107,8 @@ const map = {
     if (!window.L) return;
     this.m = L.map("map", { zoomSnap: 0.25, minZoom: 10, maxZoom: 16, scrollWheelZoom: false, attributionControl: true }).setView([37.5665, 126.978], 10.75);
     this.m.attributionControl.setPrefix(false).addAttribution("배경지도·경계: 브이월드");
-    // 브이월드 배경지도(white). 키 보호를 위해 /api/tile 프록시를 통해 받습니다.
-    L.tileLayer("/api/tile/{z}/{y}/{x}", { opacity: 0.55, minZoom: 9, maxZoom: 18, maxNativeZoom: 18, bounds: [[37.38, 126.7], [37.75, 127.3]] }).addTo(this.m);
+    // 브이월드 배경지도(white) — 인증키가 필요 없는 xdworld 타일 서버를 사용합니다.
+    L.tileLayer("https://xdworld.vworld.kr/2d/white/service/{z}/{x}/{y}.png", { opacity: 0.55, minZoom: 9, maxZoom: 18, maxNativeZoom: 18, bounds: [[37.38, 126.7], [37.75, 127.3]] }).addTo(this.m);
     this.m.on("focus", () => this.m.scrollWheelZoom.enable());
     this.m.on("blur", () => this.m.scrollWheelZoom.disable());
 

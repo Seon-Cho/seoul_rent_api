@@ -23,9 +23,7 @@
 
 ```
 seoul_rent_api/
-├── functions/api/
-│   ├── rent.js           # /api/rent — 서울시 API 프록시 (키 보관, 공공임대 분류, 자치구 조각 조회)
-│   └── tile/[z]/[y]/[x].js  # /api/tile — 브이월드 배경지도 타일 프록시 (키 보관, 서울 범위만)
+├── functions/api/rent.js # /api/rent — 서울시 API 프록시 (키 보관, 공공임대 분류, 자치구 조각 조회)
 ├── public/               # 정적 프론트엔드
 │   ├── index.html
 │   ├── style.css
@@ -47,8 +45,9 @@ seoul_rent_api/
 ## API 키 보안
 
 - API 키는 **저장소에 포함되지 않습니다.** `.env`, `.dev.vars`는 `.gitignore`로 제외됩니다.
-- 배포 환경에서는 **Cloudflare Pages Secret**(`SEOUL_API_KEY`, `VWORLD_API_KEY`)으로만 저장되며, 서버 함수 안에서만 사용됩니다. 브라우저는 키를 볼 수 없습니다.
-- 배경지도 타일도 서버 함수를 거쳐 받으므로 브이월드 키가 노출되지 않습니다. 서울 주변 타일만 허용하고, 30일간 캐시합니다.
+- 배포 환경에서는 **Cloudflare Pages Secret**(`SEOUL_API_KEY`)으로만 저장되며, 서버 함수 안에서만 사용됩니다. 브라우저는 키를 볼 수 없습니다.
+- 배경지도는 인증키가 필요 없는 브이월드 xdworld 타일(white)을 사용하므로 브라우저에 지도 키가 없습니다. (브이월드 인증키 API는 해외 서버인 Cloudflare에서의 호출을 거부해 서버 프록시가 불가능합니다.)
+- 법정동 경계(`dong.geojson`)는 브이월드 키로 미리 내려받아 정적 파일로 넣었습니다. 키는 저장소에 없습니다.
 - 서버 함수는 입력값을 화이트리스트로 검증합니다(5자리 숫자 코드, 2022–2026년). 따라서 임의의 서울시 API 호출에 악용될 수 없습니다.
 - 다른 사이트에서 오는 요청(`Sec-Fetch-Site: cross-site`)은 차단합니다. GET 요청만 허용합니다.
 - 오류 메시지에 업스트림 URL(키 포함)을 노출하지 않습니다. 결과는 엣지 캐시에 6시간 저장합니다.
@@ -59,14 +58,13 @@ seoul_rent_api/
 ```bash
 npm install
 # 로컬: .dev.vars 파일에 키 저장 (커밋 금지)
-printf "SEOUL_API_KEY=서울키\nVWORLD_API_KEY=브이월드키\n" > .dev.vars
+echo "SEOUL_API_KEY=발급받은키" > .dev.vars
 npm run dev
 
 # 배포
 npx wrangler login
 npx wrangler pages project create seoul-rent-snusun --production-branch main   # 최초 1회
 npx wrangler pages secret put SEOUL_API_KEY --project-name seoul-rent-snusun   # 프롬프트에 키 입력
-npx wrangler pages secret put VWORLD_API_KEY --project-name seoul-rent-snusun
 npm run deploy
 ```
 
